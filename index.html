@@ -1191,6 +1191,9 @@
                     this.startShowTimer();
                 }
 
+                // Esegui comandi dell'evento
+                this.executeEventCommands(event);
+
                 this.timers[event.id] = setInterval(() => {
                     event.elapsed++;
                     this.render();
@@ -1202,6 +1205,43 @@
                 }, 1000);
 
                 this.render();
+            },
+
+            executeEventCommands(event) {
+                console.log('=== Executing Event Commands ===');
+                console.log('Event:', event.name);
+                
+                // Mixer XPT
+                if (this.settings.mixer !== 'none' && event.xpt) {
+                    console.log(`🎚️ Mixer: Switching to Input ${event.xpt} on ${this.settings.mixer}`);
+                    // Qui implementare la logica di switch mixer
+                }
+                
+                // PTZ Memory
+                if (this.settings.ptzEnabled && event.ptzMemory) {
+                    console.log(`📹 PTZ: Recalling Memory ${event.ptzMemory} (${this.settings.ptzProtocol})`);
+                    // Qui implementare il recall PTZ
+                }
+                
+                // OSC Command
+                if (this.settings.oscEnabled && event.oscCommand) {
+                    console.log(`📡 OSC: Sending command ${event.oscCommand} to ${this.settings.oscIP}:${this.settings.oscPortOut}`);
+                    // Qui implementare invio OSC
+                }
+                
+                // API Command
+                if (this.settings.apiEnabled && event.apiCommand) {
+                    console.log(`🔌 API: Calling ${this.settings.apiEndpoint}${event.apiCommand}`);
+                    // Qui implementare chiamata API
+                }
+                
+                // GPIO Command
+                if (this.settings.gpioEnabled && event.gpioCommand) {
+                    console.log(`⚡ GPIO: Triggering Pin ${event.gpioCommand} on ${this.settings.gpioIP}`);
+                    // Qui implementare trigger GPIO
+                }
+                
+                console.log('================================');
             },
 
             stopEvent(index) {
@@ -1364,9 +1404,9 @@
 
                 const startTimeDisplay = event.startTime ? `<span style="font-size: 11px; color: #888; margin-left: 8px;">⏰ ${event.startTime}</span>` : '';
                 
-                // XPT Display come select dropdown
+                // XPT Display come select dropdown (solo se mixer è attivo)
                 let xptDisplay = '';
-                if (event.xpt) {
+                if (this.settings.mixer !== 'none') {
                     const xptOptions = Array.from({length: 120}, (_, i) => {
                         const value = i + 1;
                         const selected = event.xpt == value ? 'selected' : '';
@@ -1375,10 +1415,67 @@
                     
                     xptDisplay = `
                         <div style="margin-top: 6px;">
+                            <label style="font-size: 10px; color: #888; display: block; margin-bottom: 2px;">Mixer XPT:</label>
                             <select onchange="app.updateEventXPT(${index}, this.value)" style="padding: 4px 8px; background: #0a0a0a; border: 1px solid #ffa500; border-radius: 4px; color: #ffa500; font-size: 11px; cursor: pointer;">
                                 <option value="">Nessuno</option>
                                 ${xptOptions}
                             </select>
+                        </div>
+                    `;
+                }
+
+                // PTZ Memory Display (solo se PTZ è attivo)
+                let ptzDisplay = '';
+                if (this.settings.ptzEnabled) {
+                    const ptzMemory = event.ptzMemory || '';
+                    ptzDisplay = `
+                        <div style="margin-top: 6px;">
+                            <label style="font-size: 10px; color: #888; display: block; margin-bottom: 2px;">PTZ Memory:</label>
+                            <input type="text" value="${ptzMemory}" onchange="app.updateEventPTZ(${index}, this.value)" 
+                                   placeholder="Es: 1, 2, 3..." 
+                                   style="width: 100%; padding: 4px 8px; background: #0a0a0a; border: 1px solid #9c27b0; border-radius: 4px; color: #9c27b0; font-size: 11px;">
+                        </div>
+                    `;
+                }
+
+                // OSC Command Display (solo se OSC è attivo)
+                let oscDisplay = '';
+                if (this.settings.oscEnabled) {
+                    const oscCommand = event.oscCommand || '';
+                    oscDisplay = `
+                        <div style="margin-top: 6px;">
+                            <label style="font-size: 10px; color: #888; display: block; margin-bottom: 2px;">OSC Command:</label>
+                            <input type="text" value="${oscCommand}" onchange="app.updateEventOSC(${index}, this.value)" 
+                                   placeholder="/cue/1/start" 
+                                   style="width: 100%; padding: 4px 8px; background: #0a0a0a; border: 1px solid #2196f3; border-radius: 4px; color: #2196f3; font-size: 11px;">
+                        </div>
+                    `;
+                }
+
+                // API Command Display (solo se API è attivo)
+                let apiDisplay = '';
+                if (this.settings.apiEnabled) {
+                    const apiCommand = event.apiCommand || '';
+                    apiDisplay = `
+                        <div style="margin-top: 6px;">
+                            <label style="font-size: 10px; color: #888; display: block; margin-bottom: 2px;">API Endpoint:</label>
+                            <input type="text" value="${apiCommand}" onchange="app.updateEventAPI(${index}, this.value)" 
+                                   placeholder="/api/trigger/event1" 
+                                   style="width: 100%; padding: 4px 8px; background: #0a0a0a; border: 1px solid #4caf50; border-radius: 4px; color: #4caf50; font-size: 11px;">
+                        </div>
+                    `;
+                }
+
+                // GPIO Command Display (solo se GPIO è attivo)
+                let gpioDisplay = '';
+                if (this.settings.gpioEnabled) {
+                    const gpioCommand = event.gpioCommand || '';
+                    gpioDisplay = `
+                        <div style="margin-top: 6px;">
+                            <label style="font-size: 10px; color: #888; display: block; margin-bottom: 2px;">GPIO Pin:</label>
+                            <input type="text" value="${gpioCommand}" onchange="app.updateEventGPIO(${index}, this.value)" 
+                                   placeholder="Es: 5, 12, 23..." 
+                                   style="width: 100%; padding: 4px 8px; background: #0a0a0a; border: 1px solid #ff9800; border-radius: 4px; color: #ff9800; font-size: 11px;">
                         </div>
                     `;
                 }
@@ -1397,6 +1494,10 @@
                                 <div class="event-category category-${event.category}">${event.category}${startTimeDisplay}</div>
                                 <div class="event-title" contenteditable="true" onblur="app.updateEventName(${index}, this.textContent)" style="outline: none; cursor: text;">${event.name}</div>
                                 ${xptDisplay}
+                                ${ptzDisplay}
+                                ${oscDisplay}
+                                ${apiDisplay}
+                                ${gpioDisplay}
                                 ${event.notes ? `<div class="event-notes">${event.notes}</div>` : ''}
                             </div>
                             <div style="display: flex; align-items: flex-start;">
@@ -1508,6 +1609,38 @@
                     this.events[index].xpt = newXPT || null;
                     this.saveToLocalStorage();
                     this.render();
+                }
+            },
+
+            updateEventPTZ(index, ptzMemory) {
+                if (this.events[index]) {
+                    this.events[index].ptzMemory = ptzMemory.trim() || null;
+                    this.saveToLocalStorage();
+                    console.log(`Event ${index}: PTZ Memory set to ${ptzMemory}`);
+                }
+            },
+
+            updateEventOSC(index, oscCommand) {
+                if (this.events[index]) {
+                    this.events[index].oscCommand = oscCommand.trim() || null;
+                    this.saveToLocalStorage();
+                    console.log(`Event ${index}: OSC Command set to ${oscCommand}`);
+                }
+            },
+
+            updateEventAPI(index, apiCommand) {
+                if (this.events[index]) {
+                    this.events[index].apiCommand = apiCommand.trim() || null;
+                    this.saveToLocalStorage();
+                    console.log(`Event ${index}: API Command set to ${apiCommand}`);
+                }
+            },
+
+            updateEventGPIO(index, gpioCommand) {
+                if (this.events[index]) {
+                    this.events[index].gpioCommand = gpioCommand.trim() || null;
+                    this.saveToLocalStorage();
+                    console.log(`Event ${index}: GPIO Pin set to ${gpioCommand}`);
                 }
             },
 
