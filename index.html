@@ -2,8 +2,9 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http: https: ws: wss:;">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rundown Manager - DaVinci Style</title>
+    <title>Rundown Manager</title>
     <style>
         * {
             margin: 0;
@@ -531,17 +532,36 @@
                 text-align: left;
             }
         }
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+                box-shadow: 0 0 20px rgba(244, 67, 54, 0.3);
+            }
+            50% {
+                transform: scale(1.05);
+                box-shadow: 0 0 30px rgba(244, 67, 54, 0.6);
+            }
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1 contenteditable="true" id="rundownTitle" style="outline: none; cursor: text;">Rundown Manager</h1>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;">
+                <div style="display: flex; align-items: center; gap: 20px;">
+                    <h1 contenteditable="true" id="rundownTitle" style="outline: none; cursor: text; margin: 0;">Rundown Manager</h1>
+                    <div id="showCountdown" style="display: none; padding: 8px 16px; background: linear-gradient(180deg, #ffffff 0%, #f0f0f0 100%); border: 2px solid #cccccc; border-radius: 8px; font-size: 18px; font-weight: 700; color: #000000; letter-spacing: 1px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);"></div>
+                </div>
+            </div>
             <div style="font-size: 12px; color: #888; margin-top: -10px; margin-bottom: 10px;">© LeoCianci</div>
             <div class="header-controls">
                 <button class="btn btn-primary" onclick="app.addEvent()">➕ Aggiungi Evento</button>
                 <button class="btn" onclick="app.saveRundown()">Salva Rundown</button>
                 <button class="btn" onclick="app.loadRundown()">Carica Rundown</button>
+                <button class="btn" onclick="app.saveAsTemplate()">Salva come Template</button>
+                <button class="btn" onclick="app.loadFromTemplate()">Carica Template</button>
+                <button class="btn" onclick="app.showQRCode()">Controllo Remoto</button>
+                <button class="btn" onclick="app.openCompanion()">Companion</button>
                 <button class="btn btn-danger" onclick="app.resetAll()">Reset Totale</button>
                 <div class="auto-advance-indicator" id="autoAdvanceIndicator">
                     <div class="toggle-switch active" onclick="app.toggleAutoAdvance()">
@@ -555,7 +575,6 @@
                     </svg>
                     Settings
                 </button>
-                <button class="btn" onclick="app.openCompanion()"> Companion</button>
             </div>
             <div id="activeSettings" style="display: none; margin-top: 10px; padding: 10px; background: #1a1a1a; border-radius: 6px; border: 1px solid #2a2a2a;">
                 <div style="font-size: 12px; color: #888; margin-bottom: 5px;">Configurazione Attiva:</div>
@@ -610,7 +629,7 @@
                 <h2>Statistiche Show</h2>
                 <div class="stat-item">
                     <div class="stat-label">Countdown Inizio Show</div>
-                    <div class="stat-value" id="showCountdown">--:--:--</div>
+                    <div class="stat-value" id="statsCountdown">--:--:--</div>
                 </div>
                 <div class="stat-item">
                     <div class="stat-label">Tempo Totale Show</div>
@@ -814,6 +833,10 @@
                 this.startCountdownTimer();
                 this.checkAutoStart();
                 this.loadSettings();
+                this.updateShowCountdown(); // Aggiorna countdown show
+                
+                // Avvia timer per aggiornare countdown ogni secondo
+                setInterval(() => this.updateShowCountdown(), 1000);
                 
                 // Popola il select XPT con 120 opzioni
                 const xptSelect = document.getElementById('eventXPT');
@@ -1214,34 +1237,236 @@
                 // Mixer XPT
                 if (this.settings.mixer !== 'none' && event.xpt) {
                     console.log(`🎚️ Mixer: Switching to Input ${event.xpt} on ${this.settings.mixer}`);
-                    // Qui implementare la logica di switch mixer
+                    this.executeMixerCommand(event.xpt);
                 }
                 
                 // PTZ Memory
                 if (this.settings.ptzEnabled && event.ptzMemory) {
                     console.log(`📹 PTZ: Recalling Memory ${event.ptzMemory} (${this.settings.ptzProtocol})`);
-                    // Qui implementare il recall PTZ
+                    this.executePTZCommand(event.ptzMemory);
                 }
                 
                 // OSC Command
                 if (this.settings.oscEnabled && event.oscCommand) {
                     console.log(`📡 OSC: Sending command ${event.oscCommand} to ${this.settings.oscIP}:${this.settings.oscPortOut}`);
-                    // Qui implementare invio OSC
+                    this.executeOSCCommand(event.oscCommand);
                 }
                 
                 // API Command
                 if (this.settings.apiEnabled && event.apiCommand) {
                     console.log(`🔌 API: Calling ${this.settings.apiEndpoint}${event.apiCommand}`);
-                    // Qui implementare chiamata API
+                    this.executeAPICommand(event.apiCommand);
                 }
                 
                 // GPIO Command
                 if (this.settings.gpioEnabled && event.gpioCommand) {
                     console.log(`⚡ GPIO: Triggering Pin ${event.gpioCommand} on ${this.settings.gpioIP}`);
-                    // Qui implementare trigger GPIO
+                    this.executeGPIOCommand(event.gpioCommand);
                 }
                 
                 console.log('================================');
+            },
+
+            // OSC Implementation
+            executeOSCCommand(command) {
+                try {
+                    // Parse comando OSC (formato: /address value1 value2)
+                    const parts = command.trim().split(' ');
+                    const address = parts[0];
+                    const args = parts.slice(1).map(arg => {
+                        const num = parseFloat(arg);
+                        return isNaN(num) ? arg : num;
+                    });
+                    
+                    // Prova ad inviare via HTTP bridge (se configurato)
+                    this.sendOSCviaHTTP(address, args);
+                    
+                } catch (error) {
+                    console.error('❌ OSC Exception:', error);
+                }
+            },
+
+            async sendOSCviaHTTP(address, args) {
+                try {
+                    // Invia comando OSC tramite bridge HTTP
+                    // Il bridge deve essere un server Node.js che converte HTTP -> OSC UDP
+                    const bridgeUrl = `http://${this.settings.oscIP}:${this.settings.oscPortOut}/osc`;
+                    
+                    const response = await fetch(bridgeUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            address: address,
+                            args: args,
+                            target: this.settings.oscIP,
+                            port: this.settings.oscPortIn
+                        }),
+                        signal: AbortSignal.timeout(2000)
+                    });
+                    
+                    if (response.ok) {
+                        console.log(`✅ OSC Sent via HTTP Bridge: ${address}`, args);
+                    } else {
+                        throw new Error(`HTTP Bridge returned ${response.status}`);
+                    }
+                } catch (error) {
+                    // Fallback: mostra nella console come inviare manualmente
+                    console.warn('⚠️ OSC HTTP Bridge non disponibile');
+                    console.log('📡 OSC Command to send:');
+                    console.log(`   Address: ${address}`);
+                    console.log(`   Args: ${JSON.stringify(args)}`);
+                    console.log(`   Target: ${this.settings.oscIP}:${this.settings.oscPortIn}`);
+                    console.log('');
+                    console.log('💡 Setup OSC Bridge:');
+                    console.log('   1. Installa Node.js OSC Bridge');
+                    console.log('   2. Oppure usa software come OSCulator/TouchOSC Bridge');
+                    console.log('   3. Oppure usa Companion con modulo OSC');
+                    
+                    // Non mostrare alert per non interrompere il flusso
+                    // Solo log in console
+                }
+            },
+
+            // API Implementation
+            async executeAPICommand(endpoint) {
+                try {
+                    const url = `${this.settings.apiEndpoint}${endpoint}`;
+                    const headers = {
+                        'Content-Type': 'application/json'
+                    };
+                    
+                    // Aggiungi API Key se presente
+                    if (this.settings.apiKey) {
+                        headers['Authorization'] = `Bearer ${this.settings.apiKey}`;
+                    }
+                    
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: headers,
+                        body: JSON.stringify({
+                            source: 'rundown-manager',
+                            timestamp: new Date().toISOString()
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        console.log('✅ API Response:', data);
+                    } else {
+                        console.error('❌ API Error:', response.status, response.statusText);
+                        alert(`Errore API: ${response.status} - ${response.statusText}`);
+                    }
+                } catch (error) {
+                    console.error('❌ API Exception:', error);
+                    alert(`Errore API: ${error.message}`);
+                }
+            },
+
+            // PTZ Implementation
+            async executePTZCommand(memory) {
+                try {
+                    const memoryNum = parseInt(memory);
+                    if (isNaN(memoryNum)) {
+                        console.error('❌ PTZ: Invalid memory number');
+                        return;
+                    }
+                    
+                    let command = '';
+                    
+                    // Costruisci comando in base al protocollo
+                    switch (this.settings.ptzProtocol) {
+                        case 'panasonic':
+                            // Panasonic AW-UE (formato: #O + memory number)
+                            command = `#R${memoryNum.toString().padStart(2, '0')}`;
+                            break;
+                            
+                        case 'sony':
+                            // Sony VISCA (formato: 81 01 04 3F 02 0p FF dove p = preset)
+                            const preset = memoryNum.toString(16).padStart(2, '0');
+                            command = `81 01 04 3F 02 ${preset} FF`;
+                            break;
+                            
+                        case 'visca':
+                            // VISCA Standard (formato: 81 01 04 3F 02 0p FF)
+                            const viscaPreset = memoryNum.toString(16).padStart(2, '0');
+                            command = `81 01 04 3F 02 ${viscaPreset} FF`;
+                            break;
+                    }
+                    
+                    // Invia comando via HTTP (molte PTZ supportano HTTP API)
+                    const url = `http://${this.settings.ptzIP}:${this.settings.ptzPort}/cgi-bin/aw_ptz`;
+                    
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded'
+                        },
+                        body: `cmd=${encodeURIComponent(command)}&res=1`
+                    });
+                    
+                    if (response.ok) {
+                        console.log(`✅ PTZ: Memory ${memoryNum} recalled successfully`);
+                    } else {
+                        // Fallback: prova connessione TCP socket
+                        console.warn('⚠️ PTZ HTTP failed, trying TCP...');
+                        this.executePTZviaTCP(command);
+                    }
+                } catch (error) {
+                    console.error('❌ PTZ Exception:', error);
+                    // Prova fallback TCP
+                    console.warn('⚠️ PTZ: Attempting TCP connection...');
+                    alert(`Errore PTZ: ${error.message}\n\nNOTA: Il browser non supporta connessioni TCP dirette.\nPer il controllo PTZ completo, considera l'uso di un server bridge Node.js.`);
+                }
+            },
+
+            executePTZviaTCP(command) {
+                // WebSocket bridge per TCP (richiede server intermedio)
+                console.log('📡 PTZ TCP Bridge required for:', command);
+                console.log('💡 Tip: Setup a Node.js WebSocket-to-TCP bridge for full PTZ control');
+            },
+
+            // GPIO Implementation  
+            async executeGPIOCommand(pin) {
+                try {
+                    const pinNum = parseInt(pin);
+                    if (isNaN(pinNum)) {
+                        console.error('❌ GPIO: Invalid pin number');
+                        return;
+                    }
+                    
+                    // Invia comando GPIO via HTTP al device
+                    const url = `http://${this.settings.gpioIP}:${this.settings.gpioPort}/gpio/trigger`;
+                    
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            pin: pinNum,
+                            duration: 100 // milliseconds pulse
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        console.log(`✅ GPIO: Pin ${pinNum} triggered successfully`);
+                    } else {
+                        console.error('❌ GPIO Error:', response.status);
+                        alert(`Errore GPIO: ${response.status}`);
+                    }
+                } catch (error) {
+                    console.error('❌ GPIO Exception:', error);
+                    alert(`Errore GPIO: ${error.message}`);
+                }
+            },
+
+            // Mixer Implementation (placeholder per implementazione futura)
+            executeMixerCommand(input) {
+                console.log(`🎚️ Mixer command not yet implemented for ${this.settings.mixer}`);
+                console.log(`💡 Tip: Implement specific mixer protocol (ATEM SDK, Sony XVS API, etc.)`);
+                // TODO: Implementare protocolli specifici per ogni mixer
             },
 
             stopEvent(index) {
@@ -1273,13 +1498,17 @@
                 }
                 event.status = 'completed';
                 
+                // Sposta l'evento completato in fondo alla lista
+                const completedEvent = this.events.splice(index, 1)[0];
+                this.events.push(completedEvent);
+                
                 this.render();
                 this.updateStats();
                 this.saveToLocalStorage();
                 
                 // Auto-advance to next event (sempre, non solo se autoAdvance è true)
-                // Cerca il prossimo evento in attesa nella lista
-                const nextIndex = this.events.findIndex((e, i) => i > index && e.status === 'waiting');
+                // Il prossimo evento è ora sempre all'indice 0 (primo non completato)
+                const nextIndex = this.events.findIndex(e => e.status === 'waiting');
                 if (nextIndex !== -1) {
                     setTimeout(() => {
                         this.startEvent(nextIndex);
@@ -1343,6 +1572,100 @@
                 const total = this.events.reduce((sum, e) => sum + e.duration, 0);
                 const progress = total > 0 ? (this.currentShowTime / total) * 100 : 0;
                 document.getElementById('progressBar').style.width = Math.min(progress, 100) + '%';
+            },
+
+            updateShowCountdown() {
+                const countdownEl = document.getElementById('showCountdown');
+                const statsCountdownEl = document.getElementById('statsCountdown');
+                
+                // Trova il primo evento con orario impostato e non completato
+                const firstScheduledEvent = this.events.find(e => e.startTime && e.status !== 'completed');
+                
+                if (!firstScheduledEvent) {
+                    countdownEl.style.display = 'none';
+                    if (statsCountdownEl) statsCountdownEl.textContent = '--:--:--';
+                    return;
+                }
+                
+                // Parse orario evento (formato HH:MM:SS)
+                const [hours, minutes, seconds] = firstScheduledEvent.startTime.split(':').map(Number);
+                
+                // Crea data di oggi con l'orario dell'evento
+                const now = new Date();
+                const eventTime = new Date();
+                eventTime.setHours(hours, minutes, seconds || 0, 0);
+                
+                // Se l'orario è già passato oggi, considera domani
+                if (eventTime < now) {
+                    eventTime.setDate(eventTime.getDate() + 1);
+                }
+                
+                // Calcola differenza in secondi
+                const diff = Math.floor((eventTime - now) / 1000);
+                
+                // Mostra sempre countdown (anche se negativo = show in corso)
+                countdownEl.style.display = 'block';
+                
+                // Formatta countdown
+                const absDiff = Math.abs(diff);
+                const days = Math.floor(absDiff / 86400);
+                const hrs = Math.floor((absDiff % 86400) / 3600);
+                const mins = Math.floor((absDiff % 3600) / 60);
+                const secs = absDiff % 60;
+                
+                let countdownText = '';
+                let simpleCountdown = '';
+                
+                if (diff <= 0) {
+                    // Show in corso - mostra tempo passato
+                    countdownText = 'SHOW IN CORSO: +';
+                    simpleCountdown = '+';
+                } else {
+                    // Show non ancora iniziato
+                    countdownText = 'INIZIO SHOW: ';
+                    simpleCountdown = '';
+                }
+                
+                if (days > 0) {
+                    countdownText += `${days}g `;
+                    simpleCountdown += `${days}g `;
+                }
+                if (hrs > 0 || days > 0) {
+                    const hrsStr = `${String(hrs).padStart(2, '0')}:`;
+                    countdownText += hrsStr;
+                    simpleCountdown += hrsStr;
+                }
+                const timeStr = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+                countdownText += timeStr;
+                simpleCountdown += timeStr;
+                
+                // Aggiorna header countdown
+                countdownEl.textContent = countdownText;
+                
+                // Aggiorna stats countdown (solo il tempo, senza label)
+                if (statsCountdownEl) {
+                    statsCountdownEl.textContent = simpleCountdown;
+                }
+                
+                // Cambia colore in base al tempo rimanente
+                if (diff <= 0) {
+                    // Show in corso - verde
+                    countdownEl.style.background = 'linear-gradient(180deg, #4caf50 0%, #45a049 100%)';
+                    countdownEl.style.borderColor = '#5cb860';
+                    countdownEl.style.color = '#ffffff';
+                    countdownEl.style.animation = 'none';
+                } else if (diff <= 10) { // Ultimi 10 secondi - ROSSO PULSANTE
+                    countdownEl.style.background = 'linear-gradient(180deg, #f44336 0%, #e53935 100%)';
+                    countdownEl.style.borderColor = '#ff5a4e';
+                    countdownEl.style.color = '#ffffff';
+                    countdownEl.style.animation = 'pulse 1s infinite';
+                } else {
+                    // Tutti gli altri casi - BIANCO
+                    countdownEl.style.background = 'linear-gradient(180deg, #ffffff 0%, #f0f0f0 100%)';
+                    countdownEl.style.borderColor = '#cccccc';
+                    countdownEl.style.color = '#000000';
+                    countdownEl.style.animation = 'none';
+                }
             },
 
             render() {
@@ -1491,14 +1814,47 @@
                          data-index="${index}">
                         <div class="event-header">
                             <div class="event-info">
-                                <div class="event-category category-${event.category}">${event.category}${startTimeDisplay}</div>
+                                <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 4px;">
+                                    <select onchange="app.updateEventCategory(${index}, this.value)" 
+                                            style="padding: 3px 8px; background: #0a0a0a; border: 1px solid var(--category-${event.category}); border-radius: 4px; color: var(--category-${event.category}); font-size: 11px; font-weight: 600; cursor: pointer;">
+                                        <option value="video" ${event.category === 'video' ? 'selected' : ''}>VIDEO</option>
+                                        <option value="audio" ${event.category === 'audio' ? 'selected' : ''}>AUDIO</option>
+                                        <option value="lights" ${event.category === 'lights' ? 'selected' : ''}>LIGHTS</option>
+                                        <option value="stage" ${event.category === 'stage' ? 'selected' : ''}>STAGE</option>
+                                        <option value="other" ${event.category === 'other' ? 'selected' : ''}>OTHER</option>
+                                    </select>
+                                    <input type="text" value="${event.startTime || ''}" 
+                                           onchange="app.updateEventStartTime(${index}, this.value)" 
+                                           placeholder="HH:MM:SS"
+                                           style="width: 85px; padding: 3px 6px; background: #0a0a0a; border: 1px solid #666; border-radius: 4px; color: #ccc; font-size: 11px;">
+                                </div>
                                 <div class="event-title" contenteditable="true" onblur="app.updateEventName(${index}, this.textContent)" style="outline: none; cursor: text;">${event.name}</div>
+                                <div style="margin-top: 4px;">
+                                    <label style="font-size: 10px; color: #888; display: inline-block; margin-right: 4px;">Durata:</label>
+                                    <input type="text" value="${this.formatTime(event.duration)}" 
+                                           onchange="app.updateEventDuration(${index}, this.value)" 
+                                           placeholder="mm:ss"
+                                           style="width: 60px; padding: 3px 6px; background: #0a0a0a; border: 1px solid #ffa500; border-radius: 4px; color: #ffa500; font-size: 11px;">
+                                </div>
                                 ${xptDisplay}
                                 ${ptzDisplay}
                                 ${oscDisplay}
                                 ${apiDisplay}
                                 ${gpioDisplay}
-                                ${event.notes ? `<div class="event-notes">${event.notes}</div>` : ''}
+                                <div style="margin-top: 6px;">
+                                    <button class="btn btn-small" onclick="app.toggleNotes(${index})" style="font-size: 11px; padding: 3px 8px;">
+                                        📝 ${event.notesExpanded ? 'Nascondi' : 'Mostra'} Note
+                                    </button>
+                                    ${event.notesExpanded ? `
+                                        <div style="margin-top: 6px;">
+                                            <textarea 
+                                                onchange="app.updateEventNotes(${index}, this.value)"
+                                                placeholder="Aggiungi note, istruzioni, checklist..."
+                                                style="width: 100%; min-height: 80px; padding: 8px; background: #0a0a0a; border: 1px solid #444; border-radius: 4px; color: #ccc; font-size: 12px; font-family: monospace; resize: vertical;"
+                                            >${event.notes || ''}</textarea>
+                                        </div>
+                                    ` : ''}
+                                </div>
                             </div>
                             <div style="display: flex; align-items: flex-start;">
                                 <div>
@@ -1644,6 +2000,70 @@
                 }
             },
 
+            updateEventCategory(index, newCategory) {
+                if (this.events[index]) {
+                    this.events[index].category = newCategory;
+                    this.saveToLocalStorage();
+                    this.render();
+                    console.log(`Event ${index}: Category changed to ${newCategory}`);
+                }
+            },
+
+            updateEventStartTime(index, newTime) {
+                if (this.events[index]) {
+                    const formatted = this.formatTimeInput(newTime);
+                    this.events[index].startTime = formatted || null;
+                    this.saveToLocalStorage();
+                    this.render();
+                    console.log(`Event ${index}: Start time set to ${formatted}`);
+                }
+            },
+
+            updateEventDuration(index, newDuration) {
+                if (this.events[index]) {
+                    // Converte da mm:ss a secondi
+                    const parts = newDuration.split(':');
+                    let seconds = 0;
+                    
+                    if (parts.length === 2) {
+                        // Formato mm:ss
+                        seconds = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+                    } else if (parts.length === 1) {
+                        // Solo numero - tratta come secondi
+                        seconds = parseInt(newDuration);
+                    }
+                    
+                    if (seconds > 0) {
+                        this.events[index].duration = seconds;
+                        // Resetta elapsed se è maggiore della nuova durata
+                        if (this.events[index].elapsed > seconds) {
+                            this.events[index].elapsed = 0;
+                        }
+                        this.saveToLocalStorage();
+                        this.render();
+                        console.log(`Event ${index}: Duration set to ${seconds}s`);
+                    } else {
+                        // Se non valido, ripristina
+                        this.render();
+                    }
+                }
+            },
+
+            toggleNotes(index) {
+                if (this.events[index]) {
+                    this.events[index].notesExpanded = !this.events[index].notesExpanded;
+                    this.render();
+                }
+            },
+
+            updateEventNotes(index, notes) {
+                if (this.events[index]) {
+                    this.events[index].notes = notes.trim() || null;
+                    this.saveToLocalStorage();
+                    console.log(`Event ${index}: Notes updated`);
+                }
+            },
+
             moveEventUp(index) {
                 const activeEvents = this.events.filter(e => e.status !== 'completed');
                 const event = this.events[index];
@@ -1705,6 +2125,48 @@
             openSettings() {
                 document.getElementById('settingsModal').style.display = 'block';
                 this.loadSettingsToForm();
+            },
+
+            showQRCode() {
+                // Genera URL con indirizzo IP locale
+                const localIP = window.location.hostname || 'localhost';
+                const port = window.location.port || '8080';
+                const remoteURL = `http://${localIP}:${port}`;
+                
+                // Genera QR Code usando API online
+                const qrCodeURL = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(remoteURL)}`;
+                
+                // Crea modal per mostrare QR Code
+                const modal = document.createElement('div');
+                modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 10000; display: flex; align-items: center; justify-content: center;';
+                
+                modal.innerHTML = `
+                    <div style="background: #1a1a1a; padding: 30px; border-radius: 12px; border: 2px solid #ff6b00; text-align: center; max-width: 500px;">
+                        <h2 style="color: #ff6b00; margin-bottom: 20px;">📱 Controllo Remoto</h2>
+                        <p style="color: #ccc; margin-bottom: 20px;">Scannerizza questo QR Code con il telefono per controllare il rundown da remoto</p>
+                        <img src="${qrCodeURL}" style="border: 4px solid #2a2a2a; border-radius: 8px; margin-bottom: 20px;">
+                        <div style="background: #0a0a0a; padding: 15px; border-radius: 6px; margin-bottom: 20px;">
+                            <p style="color: #888; font-size: 12px; margin-bottom: 5px;">URL Remoto:</p>
+                            <p style="color: #ff6b00; font-family: monospace; font-size: 14px;">${remoteURL}</p>
+                        </div>
+                        <p style="color: #888; font-size: 12px; margin-bottom: 15px;">
+                            ⚠️ Assicurati che telefono e computer siano sulla stessa rete WiFi
+                        </p>
+                        <button onclick="this.parentElement.parentElement.remove()" 
+                                style="padding: 12px 24px; background: linear-gradient(180deg, #ff6b00 0%, #e85d00 100%); border: none; border-radius: 6px; color: white; font-weight: 600; cursor: pointer; font-size: 14px;">
+                            Chiudi
+                        </button>
+                    </div>
+                `;
+                
+                document.body.appendChild(modal);
+                
+                // Chiudi cliccando fuori
+                modal.addEventListener('click', (e) => {
+                    if (e.target === modal) {
+                        modal.remove();
+                    }
+                });
             },
 
             openCompanion() {
@@ -1823,30 +2285,131 @@
                 }
             },
 
-            testConnection() {
-                const mixer = this.settings.mixer;
-                const messages = [];
+            async testConnection() {
+                const results = [];
+                let allSuccess = true;
                 
-                if (mixer !== 'none') {
-                    messages.push(`Testing ${mixer} at ${this.settings.mixerIP}:${this.settings.mixerPort}...`);
+                // Test Mixer
+                if (this.settings.mixer !== 'none') {
+                    results.push(`🎚️ Mixer: ${this.settings.mixer}`);
+                    results.push(`   IP: ${this.settings.mixerIP}:${this.settings.mixerPort}`);
+                    results.push(`   Status: ⚠️ Implementazione specifica richiesta`);
                 }
                 
+                // Test PTZ
+                if (this.settings.ptzEnabled) {
+                    results.push(`\n📹 PTZ: ${this.settings.ptzProtocol.toUpperCase()}`);
+                    results.push(`   IP: ${this.settings.ptzIP}:${this.settings.ptzPort}`);
+                    
+                    try {
+                        const ptzUrl = `http://${this.settings.ptzIP}:${this.settings.ptzPort}/cgi-bin/aw_ptz`;
+                        const ptzResponse = await fetch(ptzUrl, { 
+                            method: 'GET',
+                            signal: AbortSignal.timeout(3000)
+                        });
+                        
+                        if (ptzResponse.ok) {
+                            results.push(`   Status: ✅ Connesso`);
+                        } else {
+                            results.push(`   Status: ⚠️ Risposta ${ptzResponse.status}`);
+                            allSuccess = false;
+                        }
+                    } catch (error) {
+                        results.push(`   Status: ❌ Non raggiungibile`);
+                        results.push(`   Error: ${error.message}`);
+                        allSuccess = false;
+                    }
+                }
+                
+                // Test OSC
                 if (this.settings.oscEnabled) {
-                    messages.push(`Testing OSC at ${this.settings.oscIP}:${this.settings.oscPortIn}/${this.settings.oscPortOut}...`);
+                    results.push(`\n📡 OSC`);
+                    results.push(`   IP: ${this.settings.oscIP}`);
+                    results.push(`   Port In: ${this.settings.oscPortIn}`);
+                    results.push(`   Port Out: ${this.settings.oscPortOut}`);
+                    
+                    try {
+                        // Prova a connettersi al bridge HTTP
+                        const oscBridgeUrl = `http://${this.settings.oscIP}:${this.settings.oscPortOut}/osc/status`;
+                        const oscResponse = await fetch(oscBridgeUrl, {
+                            method: 'GET',
+                            signal: AbortSignal.timeout(2000)
+                        });
+                        
+                        if (oscResponse.ok) {
+                            results.push(`   Status: ✅ OSC Bridge connesso`);
+                        } else {
+                            results.push(`   Status: ⚠️ Bridge risponde ${oscResponse.status}`);
+                        }
+                    } catch (error) {
+                        results.push(`   Status: ⚠️ OSC Bridge non trovato`);
+                        results.push(`   Note: Browser non supporta UDP diretto`);
+                        results.push(`   Soluzione 1: Usa Companion per OSC`);
+                        results.push(`   Soluzione 2: Setup Node.js OSC Bridge`);
+                        results.push(`   I comandi OSC verranno loggati in console`);
+                    }
                 }
                 
+                // Test API
                 if (this.settings.apiEnabled) {
-                    messages.push(`Testing API at ${this.settings.apiEndpoint}...`);
+                    results.push(`\n🔌 API`);
+                    results.push(`   Endpoint: ${this.settings.apiEndpoint}`);
+                    results.push(`   Key: ${this.settings.apiKey ? '***' + this.settings.apiKey.slice(-4) : 'Non configurata'}`);
+                    
+                    try {
+                        // Test con endpoint /health o /status se disponibile
+                        const healthUrl = `${this.settings.apiEndpoint}/health`;
+                        const apiResponse = await fetch(healthUrl, {
+                            method: 'GET',
+                            headers: this.settings.apiKey ? {
+                                'Authorization': `Bearer ${this.settings.apiKey}`
+                            } : {},
+                            signal: AbortSignal.timeout(3000)
+                        });
+                        
+                        if (apiResponse.ok) {
+                            results.push(`   Status: ✅ Connesso`);
+                        } else {
+                            results.push(`   Status: ⚠️ Risposta ${apiResponse.status}`);
+                            allSuccess = false;
+                        }
+                    } catch (error) {
+                        results.push(`   Status: ❌ Non raggiungibile`);
+                        results.push(`   Error: ${error.message}`);
+                        allSuccess = false;
+                    }
                 }
                 
+                // Test GPIO
                 if (this.settings.gpioEnabled) {
-                    messages.push(`Testing GPIO at ${this.settings.gpioIP}:${this.settings.gpioPort}...`);
+                    results.push(`\n⚡ GPIO`);
+                    results.push(`   IP: ${this.settings.gpioIP}:${this.settings.gpioPort}`);
+                    
+                    try {
+                        const gpioUrl = `http://${this.settings.gpioIP}:${this.settings.gpioPort}/gpio/status`;
+                        const gpioResponse = await fetch(gpioUrl, {
+                            method: 'GET',
+                            signal: AbortSignal.timeout(3000)
+                        });
+                        
+                        if (gpioResponse.ok) {
+                            results.push(`   Status: ✅ Connesso`);
+                        } else {
+                            results.push(`   Status: ⚠️ Risposta ${gpioResponse.status}`);
+                            allSuccess = false;
+                        }
+                    } catch (error) {
+                        results.push(`   Status: ❌ Non raggiungibile`);
+                        results.push(`   Error: ${error.message}`);
+                        allSuccess = false;
+                    }
                 }
                 
-                if (messages.length > 0) {
-                    alert('🔌 Test Connessione:\n\n' + messages.join('\n') + '\n\n⚠️ Questa è una funzione di test. Implementare la logica di connessione reale.');
-                } else {
+                if (results.length === 0) {
                     alert('⚠️ Nessun dispositivo configurato da testare.');
+                } else {
+                    const icon = allSuccess ? '✅' : '⚠️';
+                    alert(`${icon} Test Connessione:\n\n${results.join('\n')}`);
                 }
             },
 
@@ -1924,6 +2487,115 @@
                 }
             },
 
+            saveAsTemplate() {
+                const templateName = prompt('Nome del template:');
+                if (!templateName) return;
+                
+                const template = {
+                    name: templateName,
+                    title: document.getElementById('rundownTitle').textContent,
+                    events: this.events.map(e => ({
+                        name: e.name,
+                        duration: e.duration,
+                        startTime: e.startTime,
+                        category: e.category,
+                        xpt: e.xpt,
+                        ptzMemory: e.ptzMemory,
+                        oscCommand: e.oscCommand,
+                        apiCommand: e.apiCommand,
+                        gpioCommand: e.gpioCommand,
+                        notes: e.notes
+                    })),
+                    createdAt: new Date().toISOString()
+                };
+                
+                // Salva nei template
+                const templates = JSON.parse(localStorage.getItem('rundown_templates') || '[]');
+                templates.push(template);
+                localStorage.setItem('rundown_templates', JSON.stringify(templates));
+                
+                alert(`✅ Template "${templateName}" salvato con successo!`);
+            },
+
+            loadFromTemplate() {
+                const templates = JSON.parse(localStorage.getItem('rundown_templates') || '[]');
+                
+                if (templates.length === 0) {
+                    alert('Nessun template salvato. Crea il tuo primo template!');
+                    return;
+                }
+                
+                // Crea lista template
+                let templateList = 'Seleziona template:\n\n';
+                templates.forEach((t, i) => {
+                    const date = new Date(t.createdAt).toLocaleDateString('it-IT');
+                    templateList += `${i + 1}. ${t.name} (${t.events.length} eventi - ${date})\n`;
+                });
+                
+                const selection = prompt(templateList + '\nInserisci il numero del template:');
+                if (!selection) return;
+                
+                const index = parseInt(selection) - 1;
+                if (index < 0 || index >= templates.length) {
+                    alert('Selezione non valida');
+                    return;
+                }
+                
+                const template = templates[index];
+                
+                // Resetta rundown corrente
+                this.events = [];
+                this.currentEventIndex = -1;
+                
+                // Carica eventi dal template (senza status, elapsed, etc.)
+                template.events.forEach(e => {
+                    this.events.push({
+                        ...e,
+                        id: Date.now() + Math.random(),
+                        status: 'waiting',
+                        elapsed: 0
+                    });
+                });
+                
+                // Carica titolo
+                document.getElementById('rundownTitle').textContent = template.title;
+                
+                this.saveToLocalStorage();
+                this.render();
+                this.updateStats();
+                
+                alert(`✅ Template "${template.name}" caricato!`);
+            },
+
+            deleteTemplate() {
+                const templates = JSON.parse(localStorage.getItem('rundown_templates') || '[]');
+                
+                if (templates.length === 0) {
+                    alert('Nessun template da eliminare.');
+                    return;
+                }
+                
+                let templateList = 'Seleziona template da eliminare:\n\n';
+                templates.forEach((t, i) => {
+                    templateList += `${i + 1}. ${t.name}\n`;
+                });
+                
+                const selection = prompt(templateList + '\nInserisci il numero:');
+                if (!selection) return;
+                
+                const index = parseInt(selection) - 1;
+                if (index < 0 || index >= templates.length) {
+                    alert('Selezione non valida');
+                    return;
+                }
+                
+                if (confirm(`Eliminare il template "${templates[index].name}"?`)) {
+                    templates.splice(index, 1);
+                    localStorage.setItem('rundown_templates', JSON.stringify(templates));
+                    alert('✅ Template eliminato');
+                }
+            },
+
             clearAll() {
                 if (confirm('Eliminare tutti gli eventi? Questa azione non può essere annullata.')) {
                     Object.values(this.timers).forEach(timer => clearInterval(timer));
@@ -1949,5 +2621,6 @@
             app.init();
         });
     </script>
+    <script src="electron-integration.js"></script>
 </body>
 </html>
