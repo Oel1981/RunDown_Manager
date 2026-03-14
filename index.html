@@ -12,6 +12,17 @@
             box-sizing: border-box;
         }
 
+        :root {
+            --category-intro: #4caf50;
+            --category-video: #2196f3;
+            --category-live: #f44336;
+            --category-music: #9c27b0;
+            --category-grafica: #00bcd4;
+            --category-rvm: #ff6b00;
+            --category-break: #ff9800;
+            --category-other: #888;
+        }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
             background: #0a0a0a;
@@ -334,6 +345,12 @@
             box-shadow: 0 0 20px rgba(255, 107, 0, 0.3);
         }
 
+        .event-item.on-air {
+            border-color: #ff0000 !important;
+            border-width: 2px !important;
+            background: linear-gradient(180deg, #2a0000 0%, #0a0a0a 100%) !important;
+        }
+
         .event-item.completed {
             opacity: 0.6;
             border-color: #2a2a2a;
@@ -349,14 +366,14 @@
         .event-item.cat-break { border-left: 4px solid #ff9800; background: linear-gradient(90deg, rgba(92, 77, 26, 0.2) 0%, #0a0a0a 100%); }
         .event-item.cat-other { border-left: 4px solid #888; background: linear-gradient(90deg, rgba(42, 42, 42, 0.2) 0%, #0a0a0a 100%); }
         
-        .event-item.current.cat-intro { background: linear-gradient(90deg, rgba(26, 77, 46, 0.3) 0%, #1a0f00 100%); }
-        .event-item.current.cat-video { background: linear-gradient(90deg, rgba(26, 58, 92, 0.3) 0%, #1a0f00 100%); }
-        .event-item.current.cat-live { background: linear-gradient(90deg, rgba(92, 26, 26, 0.3) 0%, #1a0f00 100%); }
-        .event-item.current.cat-music { background: linear-gradient(90deg, rgba(77, 26, 92, 0.3) 0%, #1a0f00 100%); }
-        .event-item.current.cat-grafica { background: linear-gradient(90deg, rgba(26, 92, 92, 0.3) 0%, #1a0f00 100%); }
-        .event-item.current.cat-rvm { background: linear-gradient(90deg, rgba(92, 58, 26, 0.3) 0%, #1a0f00 100%); }
-        .event-item.current.cat-break { background: linear-gradient(90deg, rgba(92, 77, 26, 0.3) 0%, #1a0f00 100%); }
-        .event-item.current.cat-other { background: linear-gradient(90deg, rgba(42, 42, 42, 0.3) 0%, #1a0f00 100%); }
+        .event-item.on-air.cat-intro { border-left: 4px solid #ff0000; background: linear-gradient(90deg, rgba(92, 26, 26, 0.3) 0%, #2a0000 100%); }
+        .event-item.on-air.cat-video { border-left: 4px solid #ff0000; background: linear-gradient(90deg, rgba(92, 26, 26, 0.3) 0%, #2a0000 100%); }
+        .event-item.on-air.cat-live { border-left: 4px solid #ff0000; background: linear-gradient(90deg, rgba(92, 26, 26, 0.3) 0%, #2a0000 100%); }
+        .event-item.on-air.cat-music { border-left: 4px solid #ff0000; background: linear-gradient(90deg, rgba(92, 26, 26, 0.3) 0%, #2a0000 100%); }
+        .event-item.on-air.cat-grafica { border-left: 4px solid #ff0000; background: linear-gradient(90deg, rgba(92, 26, 26, 0.3) 0%, #2a0000 100%); }
+        .event-item.on-air.cat-rvm { border-left: 4px solid #ff0000; background: linear-gradient(90deg, rgba(92, 26, 26, 0.3) 0%, #2a0000 100%); }
+        .event-item.on-air.cat-break { border-left: 4px solid #ff0000; background: linear-gradient(90deg, rgba(92, 26, 26, 0.3) 0%, #2a0000 100%); }
+        .event-item.on-air.cat-other { border-left: 4px solid #ff0000; background: linear-gradient(90deg, rgba(92, 26, 26, 0.3) 0%, #2a0000 100%); }
 
         .event-header {
             display: flex;
@@ -541,6 +558,30 @@
                 transform: scale(1.05);
                 box-shadow: 0 0 30px rgba(244, 67, 54, 0.6);
             }
+        }
+
+        @keyframes onAirBlink {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.4;
+            }
+        }
+
+        @keyframes borderBlink {
+            0%, 100% {
+                border-color: #ff0000;
+                box-shadow: 0 0 20px rgba(255, 0, 0, 0.6), inset 0 0 20px rgba(255, 0, 0, 0.2);
+            }
+            50% {
+                border-color: #ff6666;
+                box-shadow: 0 0 40px rgba(255, 0, 0, 0.9), inset 0 0 30px rgba(255, 0, 0, 0.4);
+            }
+        }
+
+        .event-item.on-air {
+            animation: borderBlink 1s infinite;
         }
     </style>
 </head>
@@ -1809,26 +1850,32 @@
                 const isLast = eventPosition === activeEvents.length - 1;
 
                 return `
-                    <div class="event-item cat-${event.category} ${isCurrent ? 'current' : ''} ${isCompleted ? 'completed' : ''}" 
+                    <div class="event-item cat-${event.category} ${isCurrent ? 'current on-air' : ''} ${isCompleted ? 'completed' : ''}" 
                          draggable="${!isCompleted}" 
                          data-index="${index}">
                         <div class="event-header">
                             <div class="event-info">
-                                <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 4px;">
+                                <div class="event-title" contenteditable="true" onblur="app.updateEventName(${index}, this.textContent)" 
+                                     style="outline: none; cursor: text; font-size: 24px; font-weight: 700; margin-bottom: 8px; color: #ffffff;">
+                                    ${event.name}
+                                </div>
+                                <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
                                     <select onchange="app.updateEventCategory(${index}, this.value)" 
                                             style="padding: 3px 8px; background: #0a0a0a; border: 1px solid var(--category-${event.category}); border-radius: 4px; color: var(--category-${event.category}); font-size: 11px; font-weight: 600; cursor: pointer;">
+                                        <option value="intro" ${event.category === 'intro' ? 'selected' : ''}>INTRO</option>
                                         <option value="video" ${event.category === 'video' ? 'selected' : ''}>VIDEO</option>
-                                        <option value="audio" ${event.category === 'audio' ? 'selected' : ''}>AUDIO</option>
-                                        <option value="lights" ${event.category === 'lights' ? 'selected' : ''}>LIGHTS</option>
-                                        <option value="stage" ${event.category === 'stage' ? 'selected' : ''}>STAGE</option>
-                                        <option value="other" ${event.category === 'other' ? 'selected' : ''}>OTHER</option>
+                                        <option value="live" ${event.category === 'live' ? 'selected' : ''}>LIVE</option>
+                                        <option value="music" ${event.category === 'music' ? 'selected' : ''}>MUSICA</option>
+                                        <option value="grafica" ${event.category === 'grafica' ? 'selected' : ''}>GRAFICA</option>
+                                        <option value="rvm" ${event.category === 'rvm' ? 'selected' : ''}>RVM</option>
+                                        <option value="break" ${event.category === 'break' ? 'selected' : ''}>PAUSA</option>
+                                        <option value="other" ${event.category === 'other' ? 'selected' : ''}>ALTRO</option>
                                     </select>
                                     <input type="text" value="${event.startTime || ''}" 
                                            onchange="app.updateEventStartTime(${index}, this.value)" 
                                            placeholder="HH:MM:SS"
                                            style="width: 85px; padding: 3px 6px; background: #0a0a0a; border: 1px solid #666; border-radius: 4px; color: #ccc; font-size: 11px;">
                                 </div>
-                                <div class="event-title" contenteditable="true" onblur="app.updateEventName(${index}, this.textContent)" style="outline: none; cursor: text;">${event.name}</div>
                                 <div style="margin-top: 4px;">
                                     <label style="font-size: 10px; color: #888; display: inline-block; margin-right: 4px;">Durata:</label>
                                     <input type="text" value="${this.formatTime(event.duration)}" 
@@ -1842,7 +1889,7 @@
                                 ${apiDisplay}
                                 ${gpioDisplay}
                                 <div style="margin-top: 6px;">
-                                    <button class="btn btn-small" onclick="app.toggleNotes(${index})" style="font-size: 11px; padding: 3px 8px;">
+                                    <button class="btn btn-small" onclick="app.toggleNotes(${index})" style="font-size: 10px; padding: 2px 6px;">
                                         📝 ${event.notesExpanded ? 'Nascondi' : 'Mostra'} Note
                                     </button>
                                     ${event.notesExpanded ? `
@@ -1856,15 +1903,14 @@
                                     ` : ''}
                                 </div>
                             </div>
-                            <div style="display: flex; align-items: flex-start;">
-                                <div>
-                                    <div class="event-timer ${timerClass}">
-                                        ${event.status === 'running' ? '-' : ''}${this.formatTime(Math.abs(remaining))}
-                                    </div>
-                                    <div class="event-duration">Durata: ${this.formatTime(event.duration)}</div>
+                            <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 8px;">
+                                ${isCurrent ? '<div style="text-align: left; width: 100%;"><span style="background: #ff0000; color: white; padding: 6px 16px; border-radius: 6px; font-size: 16px; font-weight: 700; animation: onAirBlink 1s infinite; display: inline-block; white-space: nowrap;">● ON AIR</span></div>' : ''}
+                                <div class="event-timer ${timerClass}" style="text-align: left; width: 100%;">
+                                    ${event.status === 'running' ? '-' : ''}${this.formatTime(Math.abs(remaining))}
                                 </div>
+                                <div class="event-duration" style="text-align: left; width: 100%;">Durata: ${this.formatTime(event.duration)}</div>
                                 ${!isCompleted ? `
-                                    <div class="event-order-controls">
+                                    <div style="display: flex; gap: 6px; align-items: center;">
                                         <button class="btn-arrow" onclick="app.moveEventUp(${index})" ${isFirst ? 'disabled style="opacity: 0.3; cursor: not-allowed;"' : ''}>▲</button>
                                         <button class="btn-arrow" onclick="app.moveEventDown(${index})" ${isLast ? 'disabled style="opacity: 0.3; cursor: not-allowed;"' : ''}>▼</button>
                                     </div>
@@ -1873,15 +1919,15 @@
                         </div>
                         <div class="event-controls">
                             ${event.status === 'running' ? 
-                                `<button class="btn btn-small btn-danger" onclick="app.stopEvent(${index})">Pausa</button>` :
-                                `<button class="btn btn-small btn-success" onclick="app.startEvent(${index})">Start</button>`
+                                `<button class="btn btn-small btn-danger" onclick="app.stopEvent(${index})" style="font-size: 11px; padding: 4px 10px;">Pausa</button>` :
+                                `<button class="btn btn-small btn-success" onclick="app.startEvent(${index})" style="font-size: 11px; padding: 4px 10px;">Start</button>`
                             }
-                            <button class="btn btn-small" onclick="app.resetEvent(${index})">Reset</button>
+                            <button class="btn btn-small" onclick="app.resetEvent(${index})" style="font-size: 11px; padding: 4px 10px;">Reset</button>
                             ${isCompleted ? 
-                                `<button class="btn btn-small btn-success" onclick="app.completeEvent(${index})">✓ Completato</button>` :
-                                `<button class="btn btn-small" onclick="app.completeEvent(${index})">✓ Completa</button>`
+                                `<button class="btn btn-small btn-success" onclick="app.completeEvent(${index})" style="font-size: 11px; padding: 4px 10px;">✓ Completato</button>` :
+                                `<button class="btn btn-small" onclick="app.completeEvent(${index})" style="font-size: 11px; padding: 4px 10px;">✓ Completa</button>`
                             }
-                            <button class="btn btn-small btn-danger" onclick="app.deleteEvent(${index})">🗑️</button>
+                            <button class="btn btn-small btn-danger" onclick="app.deleteEvent(${index})" style="font-size: 11px; padding: 4px 10px;">🗑️</button>
                         </div>
                     </div>
                 `;
